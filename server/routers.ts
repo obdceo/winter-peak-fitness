@@ -2,9 +2,10 @@ import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router } from "./_core/trpc";
+import { notifyOwner } from "./_core/notification";
+import { z } from "zod";
 
 export const appRouter = router({
-    // if you need to use socket.io, read and register route in server/_core/index.ts, all api should start with '/api/' so that the gateway can route correctly
   system: systemRouter,
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
@@ -17,12 +18,38 @@ export const appRouter = router({
     }),
   }),
 
-  // TODO: add feature routers here, e.g.
-  // todo: router({
-  //   list: protectedProcedure.query(({ ctx }) =>
-  //     db.getUserTodos(ctx.user.id)
-  //   ),
-  // }),
+  contact: router({
+    submit: publicProcedure
+      .input(
+        z.object({
+          name:    z.string().min(1, "Name is required").max(200),
+          email:   z.string().email("Valid email required").max(320),
+          phone:   z.string().max(30).optional(),
+          message: z.string().min(1, "Message is required").max(5000),
+        })
+      )
+      .mutation(async ({ input }) => {
+        const lines = [
+          `Name: ${input.name}`,
+          `Email: ${input.email}`,
+          input.phone ? `Phone: ${input.phone}` : null,
+          ``,
+          `Message:`,
+          input.message,
+        ].filter(Boolean).join("\n");
+
+        const success = await notifyOwner({
+          title: `New Winter Peak Fitness Inquiry from ${input.name}`,
+          content: lines,
+        });
+
+        if (!success) {
+          throw new Error("Failed to send notification");
+        }
+
+        return { success: true } as const;
+      }),
+  }),
 });
 
 export type AppRouter = typeof appRouter;
